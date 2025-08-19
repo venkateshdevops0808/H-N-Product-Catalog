@@ -1,3 +1,4 @@
+# app/main.py
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -7,14 +8,17 @@ from fastapi import FastAPI, Depends, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlmodel import SQLModel, Field, create_engine, Session, select
 
 # -------------------- DB --------------------
+# ✅ use DB_URL exactly (as you had)
 DB_URL = os.getenv("DB_URL", "sqlite:///./app.db")
 engine = create_engine(DB_URL, echo=False, pool_pre_ping=True, pool_recycle=300)
 
-def create_db():
+def create_db() -> None:
     SQLModel.metadata.create_all(engine)
 
 def get_session():
@@ -55,7 +59,7 @@ class CatalogItemRead(SQLModel):
     reward: Optional[float]  # serialized from CatalogItem.prize
 
 # -------------------- App --------------------
-api = FastAPI(title="H&N Health Skills Catalog", version="1.1.0")
+api = FastAPI(title="H&N Health Assistant Skills Catalog", version="1.1.0")
 api.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True,
@@ -64,6 +68,7 @@ api.add_middleware(
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)  # ensure folder exists
 api.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @api.get("/", include_in_schema=False)
@@ -76,20 +81,46 @@ def health():
 
 @api.get("/__dbinfo")
 def dbinfo():
-    info = {"url": str(engine.url), "dialect": engine.url.get_backend_name()}
+    """Redacted DB info + simple connectivity/row count check (uses DB_URL)."""
+    url = make_url(DB_URL)
+    redacted = url.set(password="***") if url.password else url
+    info = {
+        "env_var": "DB_URL",
+        "dialect": url.get_backend_name(),
+        "driver": url.get_driver_name(),
+        "database": url.database,
+        "username": redacted.username,
+        "host": redacted.host,
+        "port": redacted.port,
+        "url_redacted": str(redacted),
+        "connected": False,
+        "server_version": None,
+        "items_count": 0,
+    }
     try:
-        with engine.begin() as conn:
-            current_db = conn.execute(text("select current_database()")).scalar()
-            info["current_database"] = current_db
+        with engine.connect() as conn:
+            # version (best effort)
+            try:
+                if info["dialect"] == "sqlite":
+                    v = conn.exec_driver_sql("select sqlite_version()").scalar()
+                else:
+                    v = conn.exec_driver_sql("select version()").scalar()
+                info["server_version"] = str(v)
+            except Exception:
+                pass
+            # count items safely
+            with Session(engine) as s:
+                info["items_count"] = len(s.exec(select(CatalogItem)).all())
+            info["connected"] = True
     except Exception:
-        info["current_database"] = None
+        info["connected"] = False
     return info
 
 @api.on_event("startup")
 def on_startup():
     create_db()
 
-# --------- helpers (map DB model -> API model) ----------
+# --------- helper (DB -> API model) ----------
 def to_read(obj: CatalogItem) -> CatalogItemRead:
     return CatalogItemRead(
         id=obj.id,
@@ -99,7 +130,7 @@ def to_read(obj: CatalogItem) -> CatalogItemRead:
         description=obj.description,
         device=obj.device,
         voice_prompt=obj.voice_prompt,
-        reward=obj.prize,
+        reward=obj.prize,  # None is OK (Optional)
     )
 
 # -------------------- CRUD --------------------
@@ -158,26 +189,32 @@ def delete_item(item_id: int, session: Session = Depends(get_session)):
     session.commit()
     return None
 
-# -------------------- Demo seed --------------------
+# -------------------- Demo seed (8 items) --------------------
 DEMO: List[CatalogItem] = [
     CatalogItem(name="5-min Box Breathing", category="stress", device="any",
                 voice_prompt="Let's do a 5-minute box breathing together. Inhale… hold… exhale…",
-                description="Short guided breathing for stress relief."),
+                description="Short guided breathing for stress relief.", price=0.0, prize=10.0),
     CatalogItem(name="Medication reminder (8 AM)", category="meds", device="phone",
                 voice_prompt="It's time for your morning medication. Would you like to log it?",
-                description="Daily reminder with quick confirm."),
+                description="Daily reminder with quick confirm.", price=0.0, prize=5.0),
     CatalogItem(name="Hydration nudge", category="nutrition", device="watch",
                 voice_prompt="Time to drink a glass of water. I’ll check again in 2 hours.",
-                description="Watch tap + short prompt."),
+                description="Watch tap + short prompt.", price=0.0, prize=2.5),
     CatalogItem(name="Gentle mobility: 10-min walk", category="mobility", device="watch",
-                voice_prompt="A gentle 10-minute walk would help today. Shall I start an Outdoor Walk?",
-                description="Starts Apple Watch workout."),
+                voice_prompt="A gentle 10-minute walk would help today. Start an Outdoor Walk?",
+                description="Starts Apple Watch workout.", price=0.0, prize=7.5),
     CatalogItem(name="Wind-down for sleep", category="sleep", device="phone",
                 voice_prompt="Let’s dim the noise. I’ll start a 10-minute wind-down routine.",
-                description="Bedtime routine helper."),
+                description="Bedtime routine helper.", price=0.0, prize=6.0),
     CatalogItem(name="Fall-risk check-in", category="safety", device="watch",
                 voice_prompt="How steady are you feeling today? Any dizziness or unsteadiness?",
-                description="Daily stability check-in."),
+                description="Daily stability check-in.", price=0.0, prize=4.0),
+    CatalogItem(name="Yoga Mat Flow (10-min)", category="mobility", device="any",
+                voice_prompt="Ready for a quick 10-minute mat flow? I’ll guide the moves.",
+                description="Gentle yoga mobility.", price=0.0, prize=8.0),
+    CatalogItem(name="Gratitude check", category="stress", device="phone",
+                voice_prompt="Take a moment—what's one thing you’re grateful for today?",
+                description="Positive reflection to lower stress.", price=0.0, prize=3.0),
 ]
 
 @api.post("/api/v1/items/seed_demo")
