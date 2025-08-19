@@ -33,7 +33,7 @@ jobs:
       - name: Run tests
         run: |
           # keep it minimal for demo; adapt to your test folder
-          pytest -q || true
+          python -m pytest -q
 
       - name: Azure login (SP secret)
         uses: azure/login@v2
