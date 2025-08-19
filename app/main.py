@@ -1,3 +1,4 @@
+# app/main.py
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -8,20 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import SQLModel, Field, create_engine, Session, select
+from sqlalchemy import text
 
 # -------------------- DB --------------------
 DB_URL = os.getenv("DB_URL", "sqlite:///./app.db")
 engine = create_engine(DB_URL, echo=False, pool_pre_ping=True, pool_recycle=300)
-
-class CatalogItem(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(index=True, min_length=1, max_length=120)
-    category: str = Field(index=True, max_length=60)   # sleep|stress|mobility|meds|safety|nutrition
-    description: Optional[str] = Field(default=None, max_length=2000)
-    price: Optional[float] = Field(default=0.0, ge=0)
-    # IMPORTANT: use plain string, not typing.Literal or Enum to avoid the issubclass() error
-    device: str = Field(default="any", index=True, max_length=10)  # "watch" | "phone" | "any"
-    voice_prompt: Optional[str] = Field(default=None, max_length=240)
 
 def create_db():
     SQLModel.metadata.create_all(engine)
@@ -29,6 +21,33 @@ def create_db():
 def get_session():
     with Session(engine) as s:
         yield s
+
+# -------------------- Models --------------------
+class CatalogItem(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, min_length=1, max_length=120)
+    category: str = Field(index=True, min_length=1, max_length=60)  # sleep|stress|mobility|meds|safety|nutrition
+    description: Optional[str] = Field(default=None, max_length=2000)
+    price: float = Field(default=0.0, ge=0)
+    device: str = Field(default="any", index=True, max_length=10)   # "watch" | "phone" | "any"
+    voice_prompt: Optional[str] = Field(default=None, max_length=240)
+
+class CatalogItemCreate(SQLModel):
+    name: str = Field(min_length=1, max_length=120)
+    category: str = Field(min_length=1, max_length=60)
+    price: float = Field(ge=0)
+    description: Optional[str] = Field(default=None, max_length=2000)
+    device: str = Field(default="any", max_length=10)
+    voice_prompt: Optional[str] = Field(default=None, max_length=240)
+
+class CatalogItemRead(SQLModel):
+    id: int
+    name: str
+    category: str
+    price: float
+    description: Optional[str]
+    device: str
+    voice_prompt: Optional[str]
 
 # -------------------- App --------------------
 api = FastAPI(title="H&N Health Skills Catalog", version="1.0.0")
@@ -46,23 +65,36 @@ api.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 def home():
     return FileResponse(STATIC_DIR / "index.html")
 
+@api.get("/health")
+def health():
+    return {"status": "ok"}
+
+@api.get("/__dbinfo")
+def dbinfo():
+    info = {"url": str(engine.url), "dialect": engine.url.get_backend_name()}
+    try:
+        with engine.begin() as conn:
+            current_db = conn.execute(text("select current_database()")).scalar()
+            info["current_database"] = current_db
+    except Exception:
+        info["current_database"] = None
+    return info
+
 @api.on_event("startup")
 def on_startup():
     create_db()
 
 # -------------------- CRUD --------------------
-@api.post("/api/v1/items", response_model=CatalogItem, status_code=201)
-def create_item(item: CatalogItem, session: Session = Depends(get_session)):
-    item.id = None
-    # normalize device to expected set
-    if item.device not in {"watch", "phone", "any"}:
-        item.device = "any"
+@api.post("/api/v1/items", response_model=CatalogItemRead, status_code=201)
+def create_item(data: CatalogItemCreate, session: Session = Depends(get_session)):
+    device = data.device if data.device in {"watch", "phone", "any"} else "any"
+    item = CatalogItem(**data.model_dump(exclude={"device"}), device=device)
     session.add(item)
     session.commit()
     session.refresh(item)
     return item
 
-@api.get("/api/v1/items", response_model=List[CatalogItem])
+@api.get("/api/v1/items", response_model=List[CatalogItemRead])
 def list_items(
     q: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
@@ -79,9 +111,18 @@ def list_items(
     if device:
         if device in ("watch", "phone"):
             stmt = stmt.where((CatalogItem.device == device) | (CatalogItem.device == "any"))
-
+        elif device == "any":
+            pass  # no filter
     stmt = stmt.order_by(CatalogItem.id.desc()).offset((page - 1) * page_size).limit(page_size)
-    return session.exec(stmt).all()
+    rows = session.exec(stmt).all()
+    return [CatalogItemRead.model_validate(r) for r in rows]
+
+@api.get("/api/v1/items/{item_id}", response_model=CatalogItemRead)
+def get_item(item_id: int, session: Session = Depends(get_session)):
+    obj = session.get(CatalogItem, item_id)
+    if not obj:
+        raise HTTPException(404, "Not found")
+    return obj
 
 @api.delete("/api/v1/items/{item_id}", status_code=204)
 def delete_item(item_id: int, session: Session = Depends(get_session)):
@@ -112,56 +153,28 @@ DEMO: List[CatalogItem] = [
     CatalogItem(name="Fall-risk check-in", category="safety", device="watch",
                 voice_prompt="How steady are you feeling today? Any dizziness or unsteadiness?",
                 description="Daily stability check-in."),
-    CatalogItem(name="Mindful minute", category="stress", device="any",
-                voice_prompt="One mindful minute together. Focus on your breath.",
-                description="Ultra-short reset."),
-    CatalogItem(name="Stretch set (hips)", category="mobility", device="any",
-                voice_prompt="Let’s do a gentle hip stretch. I’ll guide each step.",
-                description="Low-impact range of motion."),
-    CatalogItem(name="Breakfast check", category="nutrition", device="phone",
-                voice_prompt="How was breakfast today? Any changes to note?",
-                description="Simple adherence journaling."),
-    CatalogItem(name="Evening medication", category="meds", device="phone",
-                voice_prompt="Evening meds time. Would you like me to record it?",
-                description="Second daily reminder."),
-    CatalogItem(name="Sleep posture tip", category="sleep", device="any",
-                voice_prompt="Try a side-sleep posture tonight with pillow support.",
-                description="Small suggestion for better rest."),
-    CatalogItem(name="Home safety tip", category="safety", device="any",
-                voice_prompt="Quick safety check: clear walkways, good lighting, non-slip mats.",
-                description="Daily rotating tip."),
 ]
 
 @api.post("/api/v1/items/seed_demo")
 def seed_demo(session: Session = Depends(get_session)):
-    any_row = session.exec(select(CatalogItem).limit(1)).first()
-    if any_row:
+    # only seed if empty
+    exists = session.exec(select(CatalogItem).limit(1)).first()
+    if exists:
         return {"status": "exists"}
-    for it in DEMO:
-        session.add(it)
+    session.add_all(DEMO)
     session.commit()
     return {"status": "ok", "count": len(DEMO)}
 
 # -------------------- Recommend --------------------
-GOAL_TO_CATEGORY = {
-    "sleep": "sleep",
-    "stress": "stress",
-    "mobility": "mobility",
-    "meds": "meds",
-    "safety": "safety",
-    "nutrition": "nutrition",
-}
-
-@api.get("/api/v1/recommend", response_model=List[CatalogItem])
+@api.get("/api/v1/recommend", response_model=List[CatalogItemRead])
 def recommend(
-    persona: Optional[str] = Query(None),
-    goal: str = Query(...),
+    goal: str = Query(..., description="sleep|stress|mobility|meds|safety|nutrition"),
     device: str = Query("any"),
     session: Session = Depends(get_session),
 ):
-    cat = GOAL_TO_CATEGORY.get(goal, goal)
-    stmt = select(CatalogItem).where(CatalogItem.category == cat)
+    stmt = select(CatalogItem).where(CatalogItem.category == goal)
     if device in ("watch", "phone"):
         stmt = stmt.where((CatalogItem.device == device) | (CatalogItem.device == "any"))
     stmt = stmt.order_by(CatalogItem.id.desc()).limit(5)
-    return session.exec(stmt).all()
+    rows = session.exec(stmt).all()
+    return [CatalogItemRead.model_validate(r) for r in rows]
