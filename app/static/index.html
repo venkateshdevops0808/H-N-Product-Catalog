@@ -22,18 +22,18 @@
 
   <main class="mx-auto max-w-6xl px-4 py-8 space-y-10">
 
-    <!-- Quick intro -->
     <div class="rounded-xl bg-emerald-50 border border-emerald-100 p-4 text-sm text-emerald-900">
       This catalog powers assistant suggestions (e.g., breathing, mobility, medication reminders).
-      Each item includes a short <b>voice prompt</b> and which device it uses (Apple Watch or iPhone).
+      Each item includes a short <b>voice prompt</b>, a <b>device</b> (watch/phone), a <b>price</b> (admin meta),
+      and an optional <b>reward</b> to reinforce healthy habits.
     </div>
 
-    <!-- Admin-lite: add / seed / browse -->
+    <!-- Admin-lite -->
     <section class="space-y-4">
       <h2 class="text-lg font-medium">Catalog (admin-lite)</h2>
 
-      <div class="grid gap-3 sm:grid-cols-5 bg-white border rounded-xl p-4">
-        <input id="addName" class="rounded-lg border px-3 py-2" placeholder="skill title (e.g., 5-min Box Breathing)"/>
+      <div class="grid gap-3 sm:grid-cols-6 bg-white border rounded-xl p-4">
+        <input id="addName" class="rounded-lg border px-3 py-2 sm:col-span-2" placeholder="skill title (e.g., 5-min Box Breathing)"/>
         <select id="addCategory" class="rounded-lg border px-3 py-2">
           <option value="stress">stress</option>
           <option value="sleep">sleep</option>
@@ -47,8 +47,10 @@
           <option value="watch">Apple Watch</option>
           <option value="phone">iPhone only</option>
         </select>
-        <input id="addPrompt" class="rounded-lg border px-3 py-2 sm:col-span-2" placeholder="voice prompt (what the assistant will say)"/>
-        <textarea id="addDesc" class="rounded-lg border px-3 py-2 sm:col-span-5" placeholder="short description (optional)"></textarea>
+        <input id="addPrice" class="rounded-lg border px-3 py-2" placeholder="price ($)"/>
+        <input id="addReward" class="rounded-lg border px-3 py-2" placeholder="reward ($, optional)"/>
+        <input id="addPrompt" class="rounded-lg border px-3 py-2 sm:col-span-6" placeholder="voice prompt (what the assistant will say)"/>
+        <textarea id="addDesc" class="rounded-lg border px-3 py-2 sm:col-span-6" placeholder="short description (optional)"></textarea>
         <div class="flex gap-3">
           <button id="addBtn" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">Add</button>
           <button id="seedBtn" class="rounded-lg bg-slate-800 px-4 py-2 text-white hover:bg-slate-900">Seed demo</button>
@@ -79,7 +81,7 @@
       <div id="grid" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"></div>
     </section>
 
-    <!-- User-facing: quick recommendation -->
+    <!-- User facing -->
     <section class="space-y-4">
       <h2 class="text-lg font-medium">Try it like a user</h2>
       <div class="grid gap-3 sm:grid-cols-4 bg-white border rounded-xl p-4">

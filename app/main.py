@@ -1,4 +1,3 @@
-# app/main.py
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -8,8 +7,8 @@ from fastapi import FastAPI, Depends, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlmodel import SQLModel, Field, create_engine, Session, select
 from sqlalchemy import text
+from sqlmodel import SQLModel, Field, create_engine, Session, select
 
 # -------------------- DB --------------------
 DB_URL = os.getenv("DB_URL", "sqlite:///./app.db")
@@ -31,6 +30,8 @@ class CatalogItem(SQLModel, table=True):
     price: float = Field(default=0.0, ge=0)
     device: str = Field(default="any", index=True, max_length=10)   # "watch" | "phone" | "any"
     voice_prompt: Optional[str] = Field(default=None, max_length=240)
+    # stored in DB as "prize"; API will expose as "reward"
+    prize: Optional[float] = Field(default=None, ge=0)
 
 class CatalogItemCreate(SQLModel):
     name: str = Field(min_length=1, max_length=120)
@@ -39,6 +40,9 @@ class CatalogItemCreate(SQLModel):
     description: Optional[str] = Field(default=None, max_length=2000)
     device: str = Field(default="any", max_length=10)
     voice_prompt: Optional[str] = Field(default=None, max_length=240)
+    # Accept either "reward" (preferred) or legacy "prize"
+    reward: Optional[float] = Field(default=None, ge=0)
+    prize: Optional[float] = Field(default=None, ge=0)
 
 class CatalogItemRead(SQLModel):
     id: int
@@ -48,9 +52,10 @@ class CatalogItemRead(SQLModel):
     description: Optional[str]
     device: str
     voice_prompt: Optional[str]
+    reward: Optional[float]  # serialized from CatalogItem.prize
 
 # -------------------- App --------------------
-api = FastAPI(title="H&N Health Skills Catalog", version="1.0.0")
+api = FastAPI(title="H&N Health Skills Catalog", version="1.1.0")
 api.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True,
@@ -84,15 +89,37 @@ def dbinfo():
 def on_startup():
     create_db()
 
+# --------- helpers (map DB model -> API model) ----------
+def to_read(obj: CatalogItem) -> CatalogItemRead:
+    return CatalogItemRead(
+        id=obj.id,
+        name=obj.name,
+        category=obj.category,
+        price=obj.price,
+        description=obj.description,
+        device=obj.device,
+        voice_prompt=obj.voice_prompt,
+        reward=obj.prize,
+    )
+
 # -------------------- CRUD --------------------
 @api.post("/api/v1/items", response_model=CatalogItemRead, status_code=201)
 def create_item(data: CatalogItemCreate, session: Session = Depends(get_session)):
     device = data.device if data.device in {"watch", "phone", "any"} else "any"
-    item = CatalogItem(**data.model_dump(exclude={"device"}), device=device)
+    reward_value = data.reward if data.reward is not None else data.prize
+    item = CatalogItem(
+        name=data.name,
+        category=data.category,
+        description=data.description,
+        price=data.price,
+        device=device,
+        voice_prompt=data.voice_prompt,
+        prize=reward_value,
+    )
     session.add(item)
     session.commit()
     session.refresh(item)
-    return item
+    return to_read(item)
 
 @api.get("/api/v1/items", response_model=List[CatalogItemRead])
 def list_items(
@@ -111,18 +138,16 @@ def list_items(
     if device:
         if device in ("watch", "phone"):
             stmt = stmt.where((CatalogItem.device == device) | (CatalogItem.device == "any"))
-        elif device == "any":
-            pass  # no filter
     stmt = stmt.order_by(CatalogItem.id.desc()).offset((page - 1) * page_size).limit(page_size)
     rows = session.exec(stmt).all()
-    return [CatalogItemRead.model_validate(r) for r in rows]
+    return [to_read(r) for r in rows]
 
 @api.get("/api/v1/items/{item_id}", response_model=CatalogItemRead)
 def get_item(item_id: int, session: Session = Depends(get_session)):
     obj = session.get(CatalogItem, item_id)
     if not obj:
         raise HTTPException(404, "Not found")
-    return obj
+    return to_read(obj)
 
 @api.delete("/api/v1/items/{item_id}", status_code=204)
 def delete_item(item_id: int, session: Session = Depends(get_session)):
@@ -157,7 +182,6 @@ DEMO: List[CatalogItem] = [
 
 @api.post("/api/v1/items/seed_demo")
 def seed_demo(session: Session = Depends(get_session)):
-    # only seed if empty
     exists = session.exec(select(CatalogItem).limit(1)).first()
     if exists:
         return {"status": "exists"}
@@ -177,4 +201,4 @@ def recommend(
         stmt = stmt.where((CatalogItem.device == device) | (CatalogItem.device == "any"))
     stmt = stmt.order_by(CatalogItem.id.desc()).limit(5)
     rows = session.exec(stmt).all()
-    return [CatalogItemRead.model_validate(r) for r in rows]
+    return [to_read(r) for r in rows]

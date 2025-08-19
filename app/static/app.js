@@ -1,36 +1,45 @@
 // Minimal client. No tokens. No empty params. Just works.
 (() => {
     const $ = (id) => document.getElementById(id);
-  
     const state = { page: 1, pageSize: 12 };
   
-    // Admin-lite: add / seed
+    // Seed demo
     $('seedBtn').onclick = async () => {
       await fetch('/api/v1/items/seed_demo', { method: 'POST' });
       await list();
     };
   
+    // Add new skill
     $('addBtn').onclick = async () => {
+      const name = $('addName').value.trim();
+      if (!name) return alert('Title is required');
+  
+      const priceStr = $('addPrice').value.trim();
+      const rewardStr = $('addReward').value.trim();
+  
       const body = {
-        name: $('addName').value.trim(),
+        name,
         category: $('addCategory').value,
         device: $('addDevice').value,
         voice_prompt: $('addPrompt').value.trim() || null,
         description: $('addDesc').value.trim() || null,
-        price: 0
+        price: priceStr === '' ? 0 : Number(priceStr)
       };
-      if (!body.name) return alert('Title is required');
+      if (rewardStr !== '') body.reward = Number(rewardStr);
+  
       const res = await fetch('/api/v1/items', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(body)
       });
       if (!res.ok) return alert('Create failed');
-      $('addName').value = $('addPrompt').value = $('addDesc').value = '';
+  
+      // clear quick fields
+      ['addName','addPrompt','addDesc','addPrice','addReward'].forEach(id => $(id).value = '');
       await list();
     };
   
-    // Browse
+    // Filters
     $('searchBtn').onclick = () => { state.page = 1; list(); };
     $('resetBtn').onclick  = () => {
       $('q').value = ''; $('qCategory').value = ''; $('qDevice').value = '';
@@ -66,6 +75,10 @@
             <div>
               <div class="font-medium">${esc(it.name)}</div>
               <div class="text-xs text-gray-500">${esc(it.category)} • ${esc(it.device)}</div>
+            </div>
+            <div class="text-right">
+              ${it.price != null ? `<div class="font-medium">$${Number(it.price).toFixed(2)}</div>` : ``}
+              ${it.reward != null ? `<div class="text-emerald-700">Reward $${Number(it.reward).toFixed(2)}</div>` : ``}
             </div>
           </div>
           <div class="mt-2 text-sm text-gray-700">${esc(it.description || '')}</div>
