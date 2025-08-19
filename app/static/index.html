@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>H&N Health Assistant Skills Catalog</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gray-50 text-gray-900">
+  <header class="bg-white border-b">
+    <div class="mx-auto max-w-6xl px-4 py-6 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-full bg-emerald-600 text-white grid place-items-center font-semibold">H&N</div>
+        <div>
+          <h1 class="text-xl font-semibold">Health Assistant Skills Catalog</h1>
+          <p class="text-xs text-gray-500">Voice-first suggestions for seniors & caregivers — privacy-respecting, human-centered.</p>
+        </div>
+      </div>
+      <a href="/docs" class="text-sm text-blue-600 hover:underline">API Docs →</a>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-4 py-8 space-y-10">
+
+    <!-- Quick intro -->
+    <div class="rounded-xl bg-emerald-50 border border-emerald-100 p-4 text-sm text-emerald-900">
+      This catalog powers assistant suggestions (e.g., breathing, mobility, medication reminders).
+      Each item includes a short <b>voice prompt</b> and which device it uses (Apple Watch or iPhone).
+    </div>
+
+    <!-- Admin-lite: add / seed / browse -->
+    <section class="space-y-4">
+      <h2 class="text-lg font-medium">Catalog (admin-lite)</h2>
+
+      <div class="grid gap-3 sm:grid-cols-5 bg-white border rounded-xl p-4">
+        <input id="addName" class="rounded-lg border px-3 py-2" placeholder="skill title (e.g., 5-min Box Breathing)"/>
+        <select id="addCategory" class="rounded-lg border px-3 py-2">
+          <option value="stress">stress</option>
+          <option value="sleep">sleep</option>
+          <option value="mobility">mobility</option>
+          <option value="meds">meds</option>
+          <option value="nutrition">nutrition</option>
+          <option value="safety">safety</option>
+        </select>
+        <select id="addDevice" class="rounded-lg border px-3 py-2">
+          <option value="any">Either device</option>
+          <option value="watch">Apple Watch</option>
+          <option value="phone">iPhone only</option>
+        </select>
+        <input id="addPrompt" class="rounded-lg border px-3 py-2 sm:col-span-2" placeholder="voice prompt (what the assistant will say)"/>
+        <textarea id="addDesc" class="rounded-lg border px-3 py-2 sm:col-span-5" placeholder="short description (optional)"></textarea>
+        <div class="flex gap-3">
+          <button id="addBtn" class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">Add</button>
+          <button id="seedBtn" class="rounded-lg bg-slate-800 px-4 py-2 text-white hover:bg-slate-900">Seed demo</button>
+        </div>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-5">
+        <input id="q" class="rounded-lg border px-3 py-2" placeholder="search by title"/>
+        <select id="qCategory" class="rounded-lg border px-3 py-2">
+          <option value="">any category</option>
+          <option value="stress">stress</option>
+          <option value="sleep">sleep</option>
+          <option value="mobility">mobility</option>
+          <option value="meds">meds</option>
+          <option value="nutrition">nutrition</option>
+          <option value="safety">safety</option>
+        </select>
+        <select id="qDevice" class="rounded-lg border px-3 py-2">
+          <option value="">any device</option>
+          <option value="watch">Apple Watch</option>
+          <option value="phone">iPhone</option>
+        </select>
+        <button id="searchBtn" class="rounded-lg bg-gray-900 px-4 py-2 text-white">Search</button>
+        <button id="resetBtn" class="rounded-lg border px-4 py-2">Reset</button>
+      </div>
+
+      <div id="count" class="text-sm text-gray-500"></div>
+      <div id="grid" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"></div>
+    </section>
+
+    <!-- User-facing: quick recommendation -->
+    <section class="space-y-4">
+      <h2 class="text-lg font-medium">Try it like a user</h2>
+      <div class="grid gap-3 sm:grid-cols-4 bg-white border rounded-xl p-4">
+        <select id="persona" class="rounded-lg border px-3 py-2">
+          <option value="">persona (optional)</option>
+          <option value="senior">senior</option>
+          <option value="caregiver">caregiver</option>
+          <option value="diabetic">diabetic</option>
+        </select>
+        <select id="goal" class="rounded-lg border px-3 py-2">
+          <option value="stress">reduce stress</option>
+          <option value="sleep">sleep better</option>
+          <option value="mobility">improve mobility</option>
+          <option value="meds">take meds on time</option>
+          <option value="nutrition">eat & hydrate</option>
+          <option value="safety">home safety</option>
+        </select>
+        <select id="device" class="rounded-lg border px-3 py-2">
+          <option value="any">Either device</option>
+          <option value="watch">Apple Watch</option>
+          <option value="phone">iPhone</option>
+        </select>
+        <button id="recBtn" class="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700">Get recommendations</button>
+      </div>
+
+      <div id="recGrid" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
